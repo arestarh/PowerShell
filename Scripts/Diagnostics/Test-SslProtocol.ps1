@@ -1,4 +1,5 @@
-<#
+ function Test-SslProtocol {
+ <#
  .DESCRIPTION
    Outputs the SSL protocols that the client is able to successfully use to connect to a server.
  
@@ -30,51 +31,82 @@
    
    ComputerName       : www.google.com
    Port               : 443
-   KeyLength          : 2048
-   SignatureAlgorithm : rsa-sha1
    Ssl2               : False
    Ssl3               : True
    Tls                : True
    Tls11              : True
    Tls12              : True
+   RemoteCertificate  : CertificateObject
  #>
- function Test-SslProtocols {
-   param(
+
+   Param(
      [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$true)]
      $ComputerName,
      
      [Parameter(ValueFromPipelineByPropertyName=$true)]
      [int]$Port = 443
    )
+
    begin {
-     $ProtocolNames = [System.Security.Authentication.SslProtocols] | gm -static -MemberType Property | ?{$_.Name -notin @("Default","None")} | %{$_.Name}
+     #SslProtocols Enumeration (Enumeration of System.Security.Authentication Namespace)
+     $ProtocolNames = [System.Security.Authentication.SslProtocols] | Get-Member -Static -MemberType Property | Where-Object -FilterScript {$_.Name -notin @("Default","None")} | Select-Object -ExpandProperty Name
    }
    process {
-     $ProtocolStatus = [Ordered]@{}
-     $ProtocolStatus.Add("ComputerName", $ComputerName)
-     $ProtocolStatus.Add("Port", $Port)
-     $ProtocolStatus.Add("KeyLength", $null)
-     $ProtocolStatus.Add("SignatureAlgorithm", $null)
+     #Protocol Status object
+     $ProtocolStatus = New-Object -TypeName PSObject
+     Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name ComputerName -Value $ComputerName
+     Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name Port -Value $Port
      
-     $ProtocolNames | %{
+     #Certificate variable for certificate object
+     $cert=$null
+
+     $ProtocolNames | ForEach-Object -Process {
        $ProtocolName = $_
+       Write-Verbose -Message "Start checking support of remote host $ComputerName to use security protocol $ProtocolName." -Verbose
+
+       #Create socket using constructor Socket(SocketType, ProtocolType) of Socket Class
        $Socket = New-Object System.Net.Sockets.Socket([System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
-       $Socket.Connect($ComputerName, $Port)
+
+       #Using Connect method of Socket Class to establish a connection to a remote host.
+       Write-Verbose -Message "Creating socket and connecting to remote host $ComputerName on port $Port." -Verbose
        try {
+       $Socket.Connect($ComputerName, $Port)
+       }
+       catch [System.Net.Sockets.SocketException]
+       {
+       Write-Verbose -Message "Failed to create socket connection for host $ComputerName on port $Port`:" -Verbose
+       Write-Verbose -Message "$_" -Verbose
+       Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value 'Failed'
+       Return
+       }
+
+       #Using different classes of System.Net.Sockets Namespace, System.Net.Security Namespace to control secure communications between hosts
+       try {
+         Write-Verbose -Message "Creating network, ssl stream and authenticate using $ProtocolName protocol." -Verbose
          $NetStream = New-Object System.Net.Sockets.NetworkStream($Socket, $true)
          $SslStream = New-Object System.Net.Security.SslStream($NetStream, $true)
-         $SslStream.AuthenticateAsClient($ComputerName,  $null, $ProtocolName, $false )
+         $SslStream.AuthenticateAsClient($ComputerName,  $null, $ProtocolName, $false)
          $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
-         $ProtocolStatus["KeyLength"] = $RemoteCertificate.PublicKey.Key.KeySize
-         $ProtocolStatus["SignatureAlgorithm"] = $RemoteCertificate.SignatureAlgorithm.FriendlyName
-         $ProtocolStatus["Certificate"] = $RemoteCertificate
-         $ProtocolStatus.Add($ProtocolName, $true)
+         if (!$cert)
+         {
+         $cert=$RemoteCertificate
+         }
+         Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $true
+         Write-Verbose -Message "Successfully authenticated using $ProtocolName protocol." -Verbose
        } catch  {
-         $ProtocolStatus.Add($ProtocolName, $false)
+         Write-Verbose -Message "Failed to authenticate using $ProtocolName protocol." -Verbose
+         Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $false
        } finally {
          $SslStream.Close()
        }
      }
-     [PSCustomObject]$ProtocolStatus
+     if ($cert)
+     {
+     Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name RemoteCertificate -Value $cert
+     $ProtocolStatus
+     }
+     else {
+     $ProtocolStatus
+     }
    }
  }
