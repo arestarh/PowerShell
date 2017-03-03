@@ -1,35 +1,62 @@
+Function Get-VmCustomizationStatus
+{
 <#
-
 .SYNOPSIS 
-Waits customization process for list virtual machines to completes.
+Waits customization process for list of virtual machines to complete.
 
 .DESCRIPTION 
-Waits customization process for list virtual machines to completes. 
-The script returns if customization process ends for all virtual machines or if the specified timeout elapses. 
-The script returns PSObject for each specified VM. 
+Waits customization process for list of virtual machines to complete. 
+The function returns status - if customization process ends for all virtual machines or if the specified timeout elapses. 
+The function returns PSObject for each specified VM. 
 The output object has VM and CustomizationStatus properties.
 
-.EXAMPLE 
-$vm = 1..10 | foreach { New-VM -Template WindowsXPTemplate -OSCustomizationSpec WindowsXPCustomizaionSpec -Name "winxp-$_" } 
-.\WaitVmCustomization.ps1 -vmList $vm -timeoutSeconds 600
-
-.NOTES 
-The script is based on sveral vCenter events. 
-* VmStarting event – this event is posted on power on operation 
-* CustomizationStartedEvent event – this event is posted for VM when customiztion has started 
-* CustomizationSucceeded event – this event is posted for VM when customization has successfully completed 
+.NOTES
+The function is based on several vCenter events:
+* VmStarting event – this event is posted on power on operation
+* CustomizationStartedEvent event – this event is posted for VM when customiztion has started
+* CustomizationSucceeded event – this event is posted for VM when customization has successfully completed
 * CustomizationFailed – this event is posted for VM when customization has failed
 
-Possible CustomizationStatus values are: 
-* "VmNotStarted" – if it was not found VmStarting event for specific VM. 
+Possible CustomizationStatus values are:
+* "VmNotStarted" – if it was not found VmStarting event for specific VM.
 * "CustomizationNotStarted" – if it was not found CustomizationStarterdEvent for specific VM. 
-* "CustomizationStarted" – CustomizationStartedEvent was found, but Succeeded or Failed event were not found 
-* "CustomizationSucceeded" – CustomizationSucceeded event was found for this VM 
-* "CustomizationFailed" – CustomizationFailed event wass found for this VM
+* "CustomizationStarted" – CustomizationStartedEvent was found, but Succeeded or Failed events were not found.
+* "CustomizationSucceeded" – CustomizationSucceeded event was found for this VM.
+* "CustomizationFailed" – CustomizationFailed event was found for this VM.
 
+Several function's features:
+* It doesn’t accept pipeline input, because it checks the customization status for multiple virtual machines simultaneously. This won’t be possible if the process block script execution for each object passed by the pipeline.
+* It also shows how to work with specific type of events.
+* Its search queries for VIEvents are optimized by specifying specific entity and Start time filters.
+
+.PARAMETER vmList
+ Specifies the list of virtual machine's objects which should be monitored for the completion of a customization process.
+ For each VM, function will look for the last VmStarting event, because the customization process starts after the VM has been powered on.
+ As being said, we need to power on VM(s) to trigger customization process and pass list of VM(s) objects to funtion.
+
+.PARAMETER timeoutSeconds
+ Specifies timeout in seconds that the function should wait for the customization to end.
+
+.INPUTS
+None. You cannot pipe objects to Get-VmCustomizationStatus.
+
+.OUTPUTS
+System.Management.Automation.PSCustomObject. Get-VmCustomizationStatus returns list of PSObjects where each object holds a passed VM and its customization status – successful, failed, started, etc.
+
+.LINK
+Author - Vitali Baruh:
+https://blogs.vmware.com/PowerCLI/2012/08/waiting-for-os-customization-to-complete.html
+
+.EXAMPLE
+C:\PS> . .\Get-VmCustomizationStatus.ps1
+C:\PS> $vm = 1..10 | foreach { New-VM -Template WindowsXPTemplate -OSCustomizationSpec WindowsXPCustomizaionSpec -Name "winxp-$_" }
+C:\PS> $vm = $vm | Start-VM
+C:\PS> Get-VmCustomizationStatus -vmList $vm -timeoutSeconds 600
 #> 
-[CmdletBinding()] 
-param( 
+
+   [CmdletBinding()] 
+   Param
+   ( 
    # VMs to monitor for OS customization completion 
    [Parameter(Mandatory=$true)] 
    [ValidateNotNullOrEmpty()] 
@@ -37,7 +64,7 @@ param(
    
    # timeout in seconds to wait 
    [int] $timeoutSeconds = 600 
-)
+   )
 
 # constants for status 
       $STATUS_VM_NOT_STARTED = "VmNotStarted" 
@@ -55,9 +82,8 @@ param(
       $EVENT_TYPE_VM_START = "VMware.Vim.VmStartingEvent"
 
 # seconds to sleep before next loop iteration 
-      $WAIT_INTERVAL_SECONDS = 15 
-      
-function main($vmList, $timeoutSeconds) { 
+      $WAIT_INTERVAL_SECONDS = 15
+    
    # the moment in which the script has started 
    # the maximum time to wait is measured from this moment 
    $startTime = Get-Date 
@@ -67,27 +93,25 @@ function main($vmList, $timeoutSeconds) {
    
    # initializing list of helper objects 
    # each object holds VM, customization status and the last VmStarting event 
-   $vmDescriptors = New-Object System.Collections.ArrayList 
+   $vmDescriptors = @()#Create empty array 
    foreach($vm in $vmList) { 
-      Write-Host "Start monitoring customization process for vm '$vm'" 
-      $obj = "" | select VM,CustomizationStatus,StartVMEvent 
-      $obj.VM = $vm 
+      Write-Verbose -Message "Start monitoring customization process for VM $vm" -Verbose
+      $obj = New-Object -TypeName PSObject 
+      Add-Member -InputObject $obj -MemberType NoteProperty -Name VM -Value $vm
       # getting all events for the $vm, 
       #  filter them by type, 
       #  sort them by CreatedTime, 
-      #  get the last one 
-      $obj.StartVMEvent = Get-VIEvent -Entity $vm -Start $startTimeEventFilter | ` 
-         where { $_ -is $EVENT_TYPE_VM_START } | 
-         Sort CreatedTime | 
-         Select -Last 1 
+      #  get the last one
+      $StartVMEventValue=Get-VIEvent -Entity $vm -Start $startTimeEventFilter | Where-Object -FilterScript { $_.GetType().FullName -eq $EVENT_TYPE_VM_START } | Sort-Object CreatedTime | Select-Object -Last 1
+      Add-Member -InputObject $obj -MemberType NoteProperty -Name StartVMEvent -Value $StartVMEventValue
          
-      if (-not $obj.StartVMEvent) { 
-         $obj.CustomizationStatus = $STATUS_VM_NOT_STARTED 
-      } else { 
-         $obj.CustomizationStatus = $STATUS_CUSTOMIZATION_NOT_STARTED 
+      if (-not $obj.StartVMEvent) {
+         Add-Member -InputObject $obj -MemberType NoteProperty -Name CustomizationStatus -Value $STATUS_VM_NOT_STARTED
+      } else {
+         Add-Member -InputObject $obj -MemberType NoteProperty -Name CustomizationStatus -Value $STATUS_CUSTOMIZATION_NOT_STARTED
       } 
       
-      [void]($vmDescriptors.Add($obj)) 
+      $vmDescriptors+=$obj
    }         
    
    # declaring script block which will evaulate whether 
@@ -95,8 +119,7 @@ function main($vmList, $timeoutSeconds) {
    $shouldContinue = { 
       # is there more virtual machines to wait for customization status update 
       # we should wait for VMs with status $STATUS_STARTED or $STATUS_CUSTOMIZATION_NOT_STARTED 
-      $notCompletedVms = $vmDescriptors | ` 
-         where { $STATUS_NOT_COMPLETED_LIST -contains $_.CustomizationStatus }
+      $notCompletedVms = $vmDescriptors | Where-Object -FilterScript { $STATUS_NOT_COMPLETED_LIST -contains $_.CustomizationStatus }
 
       # evaulating the time that has elapsed since the script is running 
       $currentTime = Get-Date 
@@ -106,7 +129,7 @@ function main($vmList, $timeoutSeconds) {
       
       # returns $true if there are more virtual machines to monitor 
       # and the timeout is not elapsed 
-      return ( ($notCompletedVms -ne $null) -and ($timoutNotElapsed) ) 
+      $notCompletedVms -and $timoutNotElapsed
    } 
       
    while (& $shouldContinue) { 
@@ -116,25 +139,25 @@ function main($vmList, $timeoutSeconds) {
             $STATUS_CUSTOMIZATION_NOT_STARTED { 
                # we should check for customization started event 
                $vmEvents = Get-VIEvent -Entity $vmItem.VM -Start $vmItem.StartVMEvent.CreatedTime 
-               $startEvent = $vmEvents | where { $_ -is $EVENT_TYPE_CUSTOMIZATION_STARTED } 
+               $startEvent = $vmEvents | Where-Object -FilterScript { $_.GetType().FullName -eq $EVENT_TYPE_CUSTOMIZATION_STARTED } 
                if ($startEvent) { 
-                  $vmItem.CustomizationStatus = $STATUS_STARTED 
-                  Write-Host "Customization for VM '$vmName' has started" 
+                  Add-Member -InputObject $vmItem -MemberType NoteProperty -Name CustomizationStatus -Value $STATUS_STARTED -Force
+                  Write-Verbose -Message "Customization for VM $vmName has started" -Verbose
                } 
                break; 
             } 
             $STATUS_STARTED { 
                # we should check for customization succeeded or failed event 
                $vmEvents = Get-VIEvent -Entity $vmItem.VM -Start $vmItem.StartVMEvent.CreatedTime 
-               $succeedEvent = $vmEvents | where { $_ -is $EVENT_TYPE_CUSTOMIZATION_SUCCEEDED } 
-               $failedEvent = $vmEvents | where { $_ -is $EVENT_TYPE_CUSTOMIZATION_FAILED } 
+               $succeedEvent = $vmEvents | Where-Object -FilterScript { $_.GetType().FullName -eq $EVENT_TYPE_CUSTOMIZATION_SUCCEEDED } 
+               $failedEvent = $vmEvents | Where-Object -FilterScript { $_.GetType().FullName -eq $EVENT_TYPE_CUSTOMIZATION_FAILED } 
                if ($succeedEvent) { 
-                  $vmItem.CustomizationStatus = $STATUS_SUCCEEDED 
-                  Write-Host "Customization for VM '$vmName' has successfully completed" 
+                  Add-Member -InputObject $vmItem -MemberType NoteProperty -Name CustomizationStatus -Value $STATUS_SUCCEEDED -Force
+                  Write-Verbose -Message "Customization for VM $vmName has successfully completed" -Verbose
                } 
                if ($failedEvent) { 
-                  $vmItem.CustomizationStatus = $STATUS_FAILED 
-                  Write-Host "Customization for VM '$vmName' has failed" 
+                  Add-Member -InputObject $vmItem -MemberType NoteProperty -Name CustomizationStatus -Value $STATUS_FAILED -Force
+                  Write-Verbose -Message "Customization for VM $vmName has failed" -Verbose
                } 
                break; 
             } 
@@ -146,13 +169,13 @@ function main($vmList, $timeoutSeconds) {
                break; 
             } 
          } # enf of switch 
-      } # end of the freach loop 
+      } # end of the foreach loop 
       
-      Write-Host "Sleeping for $WAIT_INTERVAL_SECONDS seconds" 
-      Sleep $WAIT_INTERVAL_SECONDS 
+      Write-Verbose -Message "Sleeping for $WAIT_INTERVAL_SECONDS seconds" -Verbose
+      Start-Sleep -Seconds $WAIT_INTERVAL_SECONDS 
    } # end of while loop 
    
    # preparing result, without the helper column StartVMEvent 
-   $result = $vmDescriptors | select VM,CustomizationStatus 
-   return $result 
+   $result = $vmDescriptors | Select-Object VM,CustomizationStatus 
+   $result
 }
