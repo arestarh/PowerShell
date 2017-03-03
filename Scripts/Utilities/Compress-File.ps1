@@ -77,7 +77,7 @@ Function Compress-File
   #Set destination path
               try
                 {
-		        #We are adding the file header and creating a 0 byte .zip file.
+		#We are adding the file header and creating a 0 byte .zip file.
                 Set-Content -Path $destpath -Value ("PK" + [char]5 + [char]6 + ("$([char]0)" * 18)) -ErrorAction Stop
 
                 #Check if just created 0 byte .zip file has ReadOnly attribute set
@@ -97,7 +97,7 @@ Function Compress-File
   #We are starting zipping the file.
             try
                 {
-		        $ZipFile = New-Object -ComObject Shell.Application -ErrorAction Stop
+		$ZipFile = New-Object -ComObject Shell.Application -ErrorAction Stop
                 $ZipFile=$ZipFile.NameSpace($destpath)
                 }
             catch
