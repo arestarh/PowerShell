@@ -2,13 +2,11 @@
 
 ## Overview
 
-A collection of scripts, modules and pesters tests.
+A collection of scripts, modules.
 
 ## Contact
 
-- **ben@redgiantcomputers.com**
-- **http://www.bentaylor.work**
-- **https://twitter.com/bentaylorwork**
+- **arestarh22@gmail.com**
 
 ## Warning
 
