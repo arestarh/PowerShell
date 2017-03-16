@@ -94,7 +94,7 @@
          Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $true
          Write-Verbose -Message "Successfully authenticated using $ProtocolName protocol." -Verbose
        } catch  {
-         Write-Verbose -Message "Failed to authenticate using $ProtocolName protocol." -Verbose
+         Write-Verbose -Message "Failed to authenticate using $ProtocolName protocol.`n$_" -Verbose
          Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $false
        } finally {
          $SslStream.Close()
