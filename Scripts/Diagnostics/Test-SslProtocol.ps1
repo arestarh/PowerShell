@@ -19,6 +19,8 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   Be aware, that function does not check certificate revocation list during authentication.
  
  .PARAMETER ComputerName
    The name of the remote computer to connect to.
@@ -95,7 +97,14 @@
          Write-Verbose -Message "Successfully authenticated using $ProtocolName protocol." -Verbose
        } catch  {
          Write-Verbose -Message "Failed to authenticate using $ProtocolName protocol.`n$_" -Verbose
-         Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $false
+             if ($_.Exception.InnerException -match "The remote certificate is invalid according to the validation procedure.")
+             {
+             Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value 'Failed'
+             }
+             else 
+             {
+             Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $false
+             }
        } finally {
          $SslStream.Close()
        }
