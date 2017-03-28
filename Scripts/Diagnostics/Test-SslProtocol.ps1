@@ -20,33 +20,67 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-   Be aware, that function does not check certificate revocation list during authentication.
+   Be aware, that function does not check server certificate revocation list during authentication.
+   Mutual authentification is not used either (client does not send certificate to server).
  
  .PARAMETER ComputerName
    The name of the remote computer to connect to.
  
  .PARAMETER Port
    The remote port to connect to. The default is 443.
+
+ .PARAMETER MutualAuthentication
+   Specifies whether mutual authentication is required.
+
+ .PARAMETER ClientCertificate
+   Specifies client certificate object in case mutual authentication is required.
  
  .EXAMPLE
-   Test-SslProtocols -ComputerName "www.google.com"
+  C:\PS> . .\Test-SslProtocols.ps1
+  C:\PS> Test-SslProtocols -ComputerName "forums.asp.net"
    
-   ComputerName       : www.google.com
-   Port               : 443
-   Ssl2               : False
-   Ssl3               : True
-   Tls                : True
-   Tls11              : True
-   Tls12              : True
-   RemoteCertificate  : CertificateObject
+   ComputerName      : forums.asp.net
+   Port              : 443
+   Ssl2              : False
+   Ssl3              : False
+   Tls               : True
+   Tls11             : True
+   Tls12             : True
+   RemoteCertificate : [Subject]
+                      CN=*.asp.net
+                    
+                    [Issuer]
+                      CN=Microsoft IT SSL SHA2, OU=Microsoft IT, O=Microsoft Corporation, L=Redmond, S=Washington, C=US
+                    
+                    [Serial Number]
+                      5A0006EA0B4722D53C67FE1E8800010006EA0B
+                    
+                    [Not Before]
+                      02/03/2017 21:08:29
+                    
+                    [Not After]
+                      02/04/2018 22:08:29
+                    
+                    [Thumbprint]
+                      3CE5E0D96FAB6B949D8675E9638DCDE50B86E818
  #>
-
+   [CmdletBinding(DefaultParameterSetName='ServerAuthentication',SupportsShouldProcess=$true)]
    Param(
-     [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$true)]
-     $ComputerName,
+     [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$true,ParameterSetName='ServerAuthentication')]
+     [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$true,ParameterSetName='MutualAuthentication')]
+     [ValidateNotNullOrEmpty()]
+     [string]$ComputerName,
      
-     [Parameter(ValueFromPipelineByPropertyName=$true)]
-     [int]$Port = 443
+     [Parameter(ValueFromPipelineByPropertyName=$true,ParameterSetName='ServerAuthentication')]
+     [Parameter(ValueFromPipelineByPropertyName=$true,ParameterSetName='MutualAuthentication')]
+     [ValidateNotNullOrEmpty()]
+     [int]$Port = 443,
+
+     [Parameter(Mandatory=$true,ParameterSetName='MutualAuthentication')]
+     [switch]$MutualAuthentication,
+
+     [Parameter(Mandatory=$true,ParameterSetName='MutualAuthentication')]
+     [System.Security.Cryptography.X509Certificates.X509Certificate2]$ClientCertificate
    )
 
    begin {
@@ -60,7 +94,14 @@
      Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name Port -Value $Port
      
      #Certificate variable for certificate object
-     $cert=$null
+     $servercert=$null
+
+     #Creating empty certificate collection object and adding client certificate object to created collection (if mutual authentification is required)
+     if ($MutualAuthentication -eq $true)
+     {
+     $certcoll=New-Object -TypeName System.Security.Cryptography.X509Certificates.X509CertificateCollection
+     $certcoll.Add($ClientCertificate)
+     }
 
      $ProtocolNames | ForEach-Object -Process {
        $ProtocolName = $_
@@ -84,14 +125,22 @@
 
        #Using different classes of System.Net.Sockets Namespace, System.Net.Security Namespace to control secure communications between hosts
        try {
-         Write-Verbose -Message "Creating network, ssl stream and authenticate using $ProtocolName protocol." -Verbose
+         Write-Verbose -Message "Creating network, ssl streams" -Verbose
          $NetStream = New-Object System.Net.Sockets.NetworkStream($Socket, $true)
          $SslStream = New-Object System.Net.Security.SslStream($NetStream, $true)
-         $SslStream.AuthenticateAsClient($ComputerName,  $null, $ProtocolName, $false)
+             if ($MutualAuthentication -eq $true -and $ProtocolName -ne 'Ssl2')
+             {
+             Write-Verbose -Message "Starting authentification process using $ProtocolName protocol. Mutual authentification is used." -Verbose
+             $SslStream.AuthenticateAsClient($ComputerName,  $certcoll, $ProtocolName, $false)
+             }
+             else {
+             Write-Verbose -Message "Starting authentification process using $ProtocolName protocol." -Verbose
+             $SslStream.AuthenticateAsClient($ComputerName,  $null, $ProtocolName, $false)
+             }
          $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
-         if (!$cert)
+         if (!$servercert)
          {
-         $cert=$RemoteCertificate
+         $servercert=$RemoteCertificate
          }
          Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name $ProtocolName -Value $true
          Write-Verbose -Message "Successfully authenticated using $ProtocolName protocol." -Verbose
@@ -109,9 +158,9 @@
          $SslStream.Close()
        }
      }
-     if ($cert)
+     if ($servercert)
      {
-     Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name RemoteCertificate -Value $cert
+     Add-Member -InputObject $ProtocolStatus -MemberType NoteProperty -Name RemoteCertificate -Value $servercert
      $ProtocolStatus
      }
      else {
