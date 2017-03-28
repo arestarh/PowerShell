@@ -21,8 +21,7 @@
    limitations under the License.
 
    Be aware, that function does not check server certificate revocation list during authentication.
-   Mutual authentification is not used either (client does not send certificate to server).
- 
+    
  .PARAMETER ComputerName
    The name of the remote computer to connect to.
  
