@@ -1,13 +1,10 @@
-Function Restore-Registry {
+Function Import-RegistryKey {
 <#
  .SYNOPSIS
  Imports registry key from .reg file
 
  .DESCRIPTION
  Imports registry key from .reg file
- 
- .NOTES
- Wrapper of reg.exe IMPORT capabilities
 
  .PARAMETER regfilepath
  Specifies path to .reg file from which registry key will be imported.
@@ -29,13 +26,12 @@ Param(
 $regutilpath="c:\windows\system32\reg.exe"
 
 #Intialize basic object
-$hostname=Get-Item -Path Env:\COMPUTERNAME|Select-Object -ExpandProperty Value
 $obj=New-Object -TypeName PSObject
-Add-Member -InputObject $obj -MemberType NoteProperty -Name Hostname -Value $hostname
+Add-Member -InputObject $obj -MemberType NoteProperty -Name Hostname -Value $env:COMPUTERNAME
 
 #Import reg key
 $err=$null
-$command="$regutilpath IMPORT $regfilepath"
+$command="$regutilpath IMPORT $regfilepath 2> NULL"
 Invoke-Expression -command $command -ErrorAction SilentlyContinue -ErrorVariable +err|Out-Null
 if ($LASTEXITCODE -eq '0')
 {
