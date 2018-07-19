@@ -1,13 +1,10 @@
-Function Backup-Registry {
+Function Export-RegistryKey {
 <#
  .SYNOPSIS
  Exports registry key to .reg file
 
  .DESCRIPTION
  Exports registry key to .reg file
- 
- .NOTES
- Wrapper of reg.exe EXPORT capabilities
 
  .PARAMETER keypath
  Specifies path to registry key in Powershell PSDrive format. e.g.:
@@ -45,9 +42,8 @@ $regutilpath="c:\windows\system32\reg.exe"
 $keypathreg=$keypath -replace ":",""
 
 #Intialize basic object
-$hostname=Get-Item -Path Env:\COMPUTERNAME|Select-Object -ExpandProperty Value
 $obj=New-Object -TypeName PSObject
-Add-Member -InputObject $obj -MemberType NoteProperty -Name Hostname -Value $hostname
+Add-Member -InputObject $obj -MemberType NoteProperty -Name Hostname -Value $env:COMPUTERNAME
 
 #Export reg key with overwriting existing key file
 if ($force -eq $True -and (Test-Path -Path $ExportPath) -eq $True)
