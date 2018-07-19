@@ -9,7 +9,7 @@
 	.EXAMPLE
 		Add-PSSnapin Microsoft.Exchange.Management.PowerShell.E2010 -ErrorAction SilentlyContinue
 
-		Remove-OrphanedMailboxDatabase -server '<mbx2010 Server>' -dbpath '<path to dbs>' -WhatIf
+		Remove-OrphanedMailboxDatabase -server '<mbx2010 Server>' -EdbFolderPath '<path to dbs>' -WhatIf
 	.EXAMPLE
 		Add-PSSnapin Microsoft.Exchange.Management.PowerShell.E2010 -ErrorAction SilentlyContinue
 
@@ -56,7 +56,7 @@ function Remove-OrphanedMailboxDatabase() {
 					$dbInformation = Get-MailboxDatabase -Identity $dbpath.name -ErrorAction Stop
 
 					#Check if MBX DB Should be on server
-					if(-not ($dbInformation.servers | Where-Object { $_.name -eq $exServer })) {
+					if(-not ($dbInformation.servers | Where-Object { $_ -eq $server.ToUpper() })) {
 						Write-Warning "$($dbpath.name.toString()) - Should not have a copy of this DB on this server"
 
 						If ($Pscmdlet.ShouldProcess($($dbpath.FullName),"Remove Item")) {
