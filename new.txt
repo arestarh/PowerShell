@@ -1,6 +1,0 @@
-ansible 2.6.4
-  config file = /etc/ansible/ansible.cfg
-  configured module search path = [u'/home/andriibi/.ansible/plugins/modules', u'/usr/share/ansible/plugins/modules']
-  ansible python module location = /usr/lib/python2.7/site-packages/ansible
-  executable location = /usr/bin/ansible
-  python version = 2.7.5 (default, Sep 15 2016, 22:37:39) [GCC 4.8.5 20150623 (Red Hat 4.8.5-4)]
